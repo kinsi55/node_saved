@@ -25,7 +25,7 @@ var someObject = {};
 ### Saved
 
 ```js
-const Parse = require('saved');
+const Saved = require('saved');
 const Redis = require('redis');
 
 const redis_client = Redis.createClient();
