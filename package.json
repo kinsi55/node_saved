@@ -1,0 +1,22 @@
+{
+  "name": "saved",
+  "version": "0.0.1",
+  "description": "Backup and restore native Arrays and Objects to/from Redis in realtime",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "save",
+    "backup",
+    "array",
+    "object",
+    "redis"
+  ],
+  "author": "Kinsi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/Kinsi55/node_saved.git"
+  }
+}
