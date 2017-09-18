@@ -149,8 +149,8 @@ function SavedArray(redis, keyName, readyCb) {
 					rawArray.push(RedisToJS(arrBackup[i]));
 			}
 
-			//For some reason the proxy will return an empty array, even if the rawArray is populated, unless we use this hack.
-			readyCb(err);
+			if(readyCb)
+				readyCb(err);
 		});
 	}
 
@@ -252,7 +252,8 @@ function SavedObject(redis, keyName, readyCb) {
 					rawObject[objBackup[1][i]] = RedisToJS(objBackup[1][i+1]);
 			}
 
-			readyCb(err);
+			if(readyCb)
+				readyCb(err);
 		});
 	}
 

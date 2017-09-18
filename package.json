@@ -1,6 +1,6 @@
 {
   "name": "saved",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Backup and restore native Arrays and Objects to/from Redis in realtime",
   "main": "index.js",
   "scripts": {
