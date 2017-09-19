@@ -1,8 +1,13 @@
+const CUSTOM_STR_PREFIX = '|';
+
 function JSToRedis(value) {
 	if(value === undefined || value === null)
 		return 'null';
 
-	if(typeof value === 'object' || typeof value === 'string')
+	if(typeof value === 'string')
+		return `${CUSTOM_STR_PREFIX}${value}`;
+
+	if(typeof value === 'object')
 		return JSON.stringify(value);
 
 	return value;
@@ -22,6 +27,9 @@ function RedisToJS(value) {
 
 	if(!isNaN(value))
 		return Number(value);
+
+	if(value[0] === CUSTOM_STR_PREFIX)
+		return value.substr(1);
 
 	return JSONTryParse(value);
 }
