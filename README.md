@@ -59,7 +59,6 @@ due to how JS works, that value will **not** be (re-)stored.
 
 Conversions that happen in the chain:
 
-- `undefined` is converted to `null`
 - floats which end with `.0` are converted to integer
 
 ## TODO

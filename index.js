@@ -1,13 +1,21 @@
 const CUSTOM_STR_PREFIX = '|';
 
 function JSToRedis(value) {
-	if(value === undefined || value === null)
+	if(value === undefined)
+		return 'undefined';
+
+	if(value === null)
 		return 'null';
 
-	if(typeof value === 'string')
+	let type = typeof value;
+
+	if(type === 'string')
 		return `${CUSTOM_STR_PREFIX}${value}`;
 
-	if(typeof value === 'object')
+	if(type === 'boolean')
+		return value ? 'true' : 'false';
+
+	if(type === 'object')
 		return JSON.stringify(value);
 
 	return value;
@@ -22,14 +30,20 @@ function JSONTryParse(str) {
 }
 
 function RedisToJS(value) {
+	if(value[0] === CUSTOM_STR_PREFIX)
+		return value.substr(1);
+
+	if(value === 'true' || value === 'false')
+		return value === 'true';
+
+	if(value === 'undefined')
+		return undefined;
+
 	if(value === 'null')
 		return null;
 
 	if(!isNaN(value))
 		return Number(value);
-
-	if(value[0] === CUSTOM_STR_PREFIX)
-		return value.substr(1);
 
 	return JSONTryParse(value);
 }
