@@ -159,7 +159,7 @@ function SavedArray(redis, keyName, readyCb) {
 
 			rawArray.splice(0);
 			for(let i = 0; i < newValues.length; i++)
-				rawArray.push(RedisToJS(newValues[i]));
+				rawArray.push(newValues[i]);
 		}
 	};
 
