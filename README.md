@@ -4,6 +4,9 @@
 I wanted to have something that is useable like a native Array / Object
 which however is saved permanently, and restored upon restarts while
 not being async. Since such a thing didnt exist, Saved was created.
+Ever since creating it I've used it substantially in various projects with
+Arrays and Objects containing hundreds of thousands of values with frequent
+updates and have never encountered an issue.
 
 ## Install
 
