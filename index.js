@@ -1,21 +1,21 @@
-const CUSTOM_STR_PREFIX = '|';
+const CUSTOM_STR_PREFIX = "|";
 
 function JSToRedis(value) {
 	if(value === undefined)
-		return 'undefined';
+		return "undefined";
 
 	if(value === null)
-		return 'null';
+		return "null";
 
 	let type = typeof value;
 
-	if(type === 'string')
+	if(type === "string")
 		return `${CUSTOM_STR_PREFIX}${value}`;
 
-	if(type === 'boolean')
-		return value ? 'true' : 'false';
+	if(type === "boolean")
+		return value ? "true" : "false";
 
-	if(type === 'object')
+	if(type === "object")
 		return JSON.stringify(value);
 
 	return value;
@@ -33,13 +33,13 @@ function RedisToJS(value) {
 	if(value[0] === CUSTOM_STR_PREFIX)
 		return value.substr(1);
 
-	if(value === 'true' || value === 'false')
-		return value === 'true';
+	if(value === "true" || value === "false")
+		return value === "true";
 
-	if(value === 'undefined')
+	if(value === "undefined")
 		return undefined;
 
-	if(value === 'null')
+	if(value === "null")
 		return null;
 
 	if(!isNaN(value))
@@ -48,7 +48,7 @@ function RedisToJS(value) {
 	return JSONTryParse(value);
 }
 
-function RedisListInsert(redis, keyName, values, func = 'rpush') {
+function RedisListInsert(redis, keyName, values, func = "rpush") {
 	if(!values || !values.length)
 		return;
 
@@ -76,9 +76,9 @@ function RedisListDelete(redis, keyName, index, amount) {
 		multi.exec();
 }
 
-const REDIS_TMP_PIVOT_KEY = 'DUMMY_PLACEHOLDER#WE+WANT*TO!DELETE:OR;UPDATE&THIS/SO(LETS=DO°IT?';
-const OBJECT_PREFIX = 'SAVEDOBJ:';
-const ARRAY_PREFIX = 'SAVEDARR:';
+const REDIS_TMP_PIVOT_KEY = "DUMMY_PLACEHOLDER#WE+WANT*TO!DELETE:OR;UPDATE&THIS/SO(LETS=DO°IT?";
+const OBJECT_PREFIX = "SAVEDOBJ:";
+const ARRAY_PREFIX = "SAVEDARR:";
 
 function SavedArray(redis, keyName, readyCb) {
 	const rawArray = [];
@@ -95,7 +95,7 @@ function SavedArray(redis, keyName, readyCb) {
 			return rawArray.shift();
 		},
 		unshift() {
-			RedisListInsert(redis, keyName, arguments, 'lpush');
+			RedisListInsert(redis, keyName, arguments, "lpush");
 			return rawArray.unshift(...arguments);
 		},
 		//"Some" optimization for the Redis side as this often is faster than shifting the values up 1 by 1
@@ -106,8 +106,8 @@ function SavedArray(redis, keyName, readyCb) {
 			if(arguments.length === 0 || index > rawArray)
 				return [];
 
-			let toInsert = Math.max(arguments.length - 2, 0), //First two args arent insert-vals
-					toDelete = deleteCount;
+			let toInsert = Math.max(arguments.length - 2, 0); //First two args arent insert-vals
+			let toDelete = deleteCount;
 
 			//This exact behaviour is the default per spec
 			if(toDelete === undefined)
@@ -117,7 +117,7 @@ function SavedArray(redis, keyName, readyCb) {
 
 			let multi = redis.multi();
 
-			//Since we don't just insert, but also remove values we might aswell overwrite as much as possible values
+			//Since we don"t just insert, but also remove values we might aswell overwrite as much as possible values
 			//that would be removed anyways to save some ops
 			for(let i = 0; i < toOverwrite; i++) {
 				multi.lset(keyName, index + i, JSToRedis(arguments[2 + i]));
@@ -130,7 +130,7 @@ function SavedArray(redis, keyName, readyCb) {
 				multi.lset(keyName, index + toOverwrite - 1, REDIS_TMP_PIVOT_KEY);
 
 				for(let i = toOverwrite; i < toInsert; i++)
-					multi.linsert(keyName, 'AFTER', REDIS_TMP_PIVOT_KEY, JSToRedis(arguments[2 + i]));
+					multi.linsert(keyName, "AFTER", REDIS_TMP_PIVOT_KEY, JSToRedis(arguments[2 + i]));
 
 				multi.lset(keyName, index + toOverwrite - 1, JSToRedis(rawArray[index + toOverwrite - 1]));
 			}
@@ -146,7 +146,7 @@ function SavedArray(redis, keyName, readyCb) {
 		},
 		overwrite(newValues = []) {
 			if(!newValues || newValues.constructor !== Array)
-				throw new Error('Replacement must be typeof array!');
+				throw new Error("Replacement must be typeof array!");
 
 			if(!newValues.length)
 				redis.del(keyName);
@@ -180,18 +180,18 @@ function SavedArray(redis, keyName, readyCb) {
 	}
 
 	if(redis.connected && !redis.command_queue_length && !redis.offline_queue_length) loadFromRedis();
-	//Ready really seems like the best option. When init'ing a new instance of SavedArray it is possible to do some
-	//Actions before we were able to restore from Redis. 'ready' is called after any queued operation has been processed.
+	//Ready really seems like the best option. When init"ing a new instance of SavedArray it is possible to do some
+	//Actions before we were able to restore from Redis. "ready" is called after any queued operation has been processed.
 	//Doing normal Sets, shifts and pushes should work fine before its restored, splice however will cause issues.
 	//So when we finally processed anything that possibly happened, we restore from the Redis list, which should be the most accurate
 	//representation of the current "real" state
-	redis.on('ready', loadFromRedis);
+	redis.on("ready", loadFromRedis);
 
 	return new Proxy(rawArray, {
 		set (target, index, value) {
-			//Operations like 'pop' will just decrease the length of the array, so when this happens we need to remove the values from
+			//Operations like "pop" will just decrease the length of the array, so when this happens we need to remove the values from
 			//the redis list as well
-			if(index === 'length' && value < rawArray.length) {
+			if(index === "length" && value < rawArray.length) {
 				RedisListDelete(redis, keyName, value, rawArray.length - value);
 
 				rawArray[index] = value;
@@ -226,7 +226,7 @@ function SavedArray(redis, keyName, readyCb) {
 
 			//calling delete on an array will remove the value, but it wont shift down the array, so lets do the same for Redis.
 			if(!isNaN(parsedInt) && Number(index) === parsedInt && parsedInt >= 0)
-				redis.lset(keyName, parsedInt, 'null');
+				redis.lset(keyName, parsedInt, "null");
 
 			delete rawArray[index];
 			return true;
@@ -266,8 +266,8 @@ function SavedObject(redis, keyName, readyCb) {
 	};
 
 	function loadFromRedis() {
-		//Get up to 4294967295 rows from array (Max keys in JS obj). Splitting it into batches *might* be better, but for now I don't care.
-		redis.hscan(keyName, 0, 'COUNT', 4294967295, (err, objBackup) => {
+		//Get up to 4294967295 rows from array (Max keys in JS obj). Splitting it into batches *might* be better, but for now I don"t care.
+		redis.hscan(keyName, 0, "COUNT", 4294967295, (err, objBackup) => {
 			if(!err && objBackup) {
 				for(let k in rawObject)
 					delete rawObject[k];
@@ -282,12 +282,12 @@ function SavedObject(redis, keyName, readyCb) {
 	}
 
 	if(redis.connected && !redis.command_queue_length) loadFromRedis();
-	redis.on('ready', loadFromRedis);
+	redis.on("ready", loadFromRedis);
 
 	return new Proxy(rawObject, {
 		set (target, key, value) {
 			if(key === "overwrite")
-				throw "Setting reserved property 'overwrite' is not possible with Saved";
+				throw "Setting reserved property \"overwrite\" is not possible with Saved";
 
 			redis.hset(keyName, key, JSToRedis(value));
 
@@ -307,7 +307,7 @@ function SavedObject(redis, keyName, readyCb) {
 			//Alternative: hasOwnProperty, which is slower than this check
 			//and since we only have one custom function anyways...
 			if(property === "overwrite")
-				return SavedObjectFuncs[property]
+				return SavedObjectFuncs[property];
 
 			return rawObject[property];
 		}
