@@ -160,6 +160,9 @@ function SavedArray(redis, keyName, readyCb) {
 			rawArray.splice(0);
 			for(let i = 0; i < newValues.length; i++)
 				rawArray.push(newValues[i]);
+		},
+		indexOf(item, start) {
+			return rawArray.indexOf(item, start);
 		}
 	};
 
@@ -188,10 +191,10 @@ function SavedArray(redis, keyName, readyCb) {
 		set (target, index, value) {
 			//Operations like 'pop' will just decrease the length of the array, so when this happens we need to remove the values from
 			//the redis list as well
-			if(index === 'length' && value < target.length) {
-				RedisListDelete(redis, keyName, value, target.length - value);
+			if(index === 'length' && value < rawArray.length) {
+				RedisListDelete(redis, keyName, value, rawArray.length - value);
 
-				target[index] = value;
+				rawArray[index] = value;
 				return true;
 			}
 
@@ -199,44 +202,43 @@ function SavedArray(redis, keyName, readyCb) {
 
 			//While you can set non-integer values of an array, they do not count as "real" values
 			if(!isNaN(parsedInt) && Number(index) === parsedInt && parsedInt >= 0) {
-				if(parsedInt < target.length) {
+				if(parsedInt < rawArray.length) {
 					redis.lset(keyName, parsedInt, JSToRedis(value));
 				} else {
 					//You can e.g. set index 100 of an empty array, the values before that get filled with undefined
 					//These fillings however do not cause any (proxy) calls, so we must manually replicate it for the Redis side
-					let toPush = Array(parsedInt - target.length);
+					let toPush = Array(parsedInt - rawArray.length);
 					toPush.push(value);
 
 					RedisListInsert(redis, keyName, toPush);
 
-					target.push(value);
+					rawArray.push(value);
 
 					return true;
 				}
 			}
 
-			target[index] = value;
+			rawArray[index] = value;
 			return true;
 		},
 		deleteProperty (target, index) {
-			let parsedInt = parseInt(index, 10);
+			const parsedInt = parseInt(index, 10);
 
 			//calling delete on an array will remove the value, but it wont shift down the array, so lets do the same for Redis.
 			if(!isNaN(parsedInt) && Number(index) === parsedInt && parsedInt >= 0)
 				redis.lset(keyName, parsedInt, 'null');
 
-			delete target[index];
+			delete rawArray[index];
 			return true;
 		},
 		has (target, property) {
-			return property in SavedArrayFuncs || property in target;
+			return SavedArrayFuncs[property] || property in rawArray;
 		},
 		get (target, property) {
-			if (property in SavedArrayFuncs) {
-				return SavedArrayFuncs[property].bind(target);
-			} else {
-				return target[property];
-			}
+			if(property === "push" || property === "indexOf" || property === "splice" || property === "shift" || property === "unshift" || property === "overwrite")
+				return SavedArrayFuncs[property];
+
+			return target[property];
 		}
 	});
 }
@@ -284,26 +286,30 @@ function SavedObject(redis, keyName, readyCb) {
 
 	return new Proxy(rawObject, {
 		set (target, key, value) {
+			if(key === "overwrite")
+				throw "Setting reserved property 'overwrite' is not possible with Saved";
+
 			redis.hset(keyName, key, JSToRedis(value));
 
-			target[key] = value;
+			rawObject[key] = value;
 			return true;
 		},
 		deleteProperty (target, key) {
 			redis.hdel(keyName, key);
 
-			delete target[key];
+			delete rawObject[key];
 			return true;
 		},
 		has (target, property) {
-			return property in SavedObjectFuncs || property in target;
+			return property in rawObject || SavedObjectFuncs[property];
 		},
 		get (target, property) {
-			if (property in SavedObjectFuncs) {
-				return SavedObjectFuncs[property].bind(target);
-			} else {
-				return target[property];
-			}
+			//Alternative: hasOwnProperty, which is slower than this check
+			//and since we only have one custom function anyways...
+			if(property === "overwrite")
+				return SavedObjectFuncs[property]
+
+			return rawObject[property];
 		}
 	});
 }
