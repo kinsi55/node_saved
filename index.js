@@ -107,7 +107,7 @@ function SavedArray(redis, options, readyCb) {
 
 	const SavedArrayFuncs = {
 		push() {
-			config.keyName(arguments);
+			RLInsert(arguments);
 			return rawArray.push(...arguments);
 		},
 		shift() {
