@@ -33,9 +33,16 @@ const Redis = require('redis');
 
 const redis_client = Redis.createClient();
 
-const someArray = Saved.Array(redis_client, 'NameInRedis'[, function ready(err){}]);
-const someObject = Saved.Object(redis_client, 'NameInRedis'[, function ready(err){}]);
+const someArray = Saved.Array(redis_client, 'someArray'[, function ready(err){}]);
+const someObject = Saved.Object(redis_client, 'someObject'[, function ready(err){}]);
 ```
+
+Instead of passing a String as the second parameter (Key name in Redis) you can also pass an Object containing the following options
+
+- keyName (`String`): Name of mirrored data in Redis
+- prefix (`String`): Defaults to "SAVEDOBJ:" or "SAVEDARR:" respectively
+- encoder (`Function(valueToEncode)`): Serializer called when writing to Redis (By nature of this module, must be Synchronous!). Defaults to universal stock function
+- decoder (`Function(valueDecode)`): Deserializer called when loading values from Redis (By nature of this module, must be Synchronous!). Defaults to universal stock function
 
 ## Keep in mind
 

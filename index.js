@@ -58,7 +58,7 @@ function RedisListInsert(redis, keyName, values, func = "rpush") {
 		execOn = redis.multi();
 
 	for(let i = 0; i < values.length; i++)
-		execOn[func](keyName, JSToRedis(values[i]));
+		execOn[func](keyName, this.encoder(values[i]));
 
 	if(values.length > 1)
 		execOn.exec();
@@ -80,22 +80,42 @@ const REDIS_TMP_PIVOT_KEY = "DUMMY_PLACEHOLDER#WE+WANT*TO!DELETE:OR;UPDATE&THIS/
 const OBJECT_PREFIX = "SAVEDOBJ:";
 const ARRAY_PREFIX = "SAVEDARR:";
 
-function SavedArray(redis, keyName, readyCb) {
+function SavedArray(redis, options, readyCb) {
 	const rawArray = [];
 
-	keyName = ARRAY_PREFIX + keyName;
+	if(typeof options === "string")
+		options = {keyName: options};
+
+	if(typeof options !== "object")
+		throw "\"options\" must be an Object or a String representing the \"keyName\" field";
+
+	const config = Object.assign({
+		prefix: ARRAY_PREFIX,
+		encoder: JSToRedis,
+		decoder: RedisToJS
+	}, options);
+
+	if(typeof config.keyName !== "string")
+		throw "\"keyName\" and \"prefix\" must be a string";
+
+	config.keyName = config.prefix + config.keyName;
+
+	if(typeof config.encoder !== "function" || typeof config.decoder !== "function")
+		throw "\"encoder\" and \"decoder\" must be functions";
+
+	const RLInsert = RedisListInsert.bind(config, redis, config.keyName);
 
 	const SavedArrayFuncs = {
 		push() {
-			RedisListInsert(redis, keyName, arguments);
+			config.keyName(arguments);
 			return rawArray.push(...arguments);
 		},
 		shift() {
-			redis.lpop(keyName);
+			redis.lpop(config.keyName);
 			return rawArray.shift();
 		},
 		unshift() {
-			RedisListInsert(redis, keyName, arguments, "lpush");
+			RLInsert(arguments, "lpush");
 			return rawArray.unshift(...arguments);
 		},
 		//"Some" optimization for the Redis side as this often is faster than shifting the values up 1 by 1
@@ -120,24 +140,24 @@ function SavedArray(redis, keyName, readyCb) {
 			//Since we don"t just insert, but also remove values we might aswell overwrite as much as possible values
 			//that would be removed anyways to save some ops
 			for(let i = 0; i < toOverwrite; i++) {
-				multi.lset(keyName, index + i, JSToRedis(arguments[2 + i]));
+				multi.lset(config.keyName, index + i, JSToRedis(arguments[2 + i]));
 
 				rawArray[index + i] = arguments[2 + i];
 			}
 
 			//We try to insert more than we delete, so we need to insert the extra values into Redis
 			if(toOverwrite < toInsert) {
-				multi.lset(keyName, index + toOverwrite - 1, REDIS_TMP_PIVOT_KEY);
+				multi.lset(config.keyName, index + toOverwrite - 1, REDIS_TMP_PIVOT_KEY);
 
 				for(let i = toOverwrite; i < toInsert; i++)
-					multi.linsert(keyName, "AFTER", REDIS_TMP_PIVOT_KEY, JSToRedis(arguments[2 + i]));
+					multi.linsert(config.keyName, "AFTER", REDIS_TMP_PIVOT_KEY, JSToRedis(arguments[2 + i]));
 
-				multi.lset(keyName, index + toOverwrite - 1, JSToRedis(rawArray[index + toOverwrite - 1]));
+				multi.lset(config.keyName, index + toOverwrite - 1, JSToRedis(rawArray[index + toOverwrite - 1]));
 			}
 
 			//If we delete more than we try to insert, we gotta finally remove the more of them from Redis
 			if(toDelete > toInsert)
-				RedisListDelete(multi, keyName, index, toDelete - toInsert);
+				RedisListDelete(multi, config.keyName, index, toDelete - toInsert);
 
 			multi.exec();
 
@@ -145,15 +165,15 @@ function SavedArray(redis, keyName, readyCb) {
 			return rawArray.splice(...arguments);
 		},
 		overwrite(newValues = []) {
-			if(!newValues || newValues.constructor !== Array)
-				throw new Error("Replacement must be typeof array!");
+			if(!newValues || !Array.isArray(newValues))
+				throw new Error("Replacement must be an Array!");
 
 			if(!newValues.length)
-				redis.del(keyName);
+				redis.del(config.keyName);
 			else {
 				let multi = redis.multi();
-				multi.del(keyName);
-				multi.lpush(keyName, ...newValues.map(JSToRedis));
+				multi.del(config.keyName);
+				multi.lpush(config.keyName, ...newValues.map(JSToRedis));
 				multi.exec();
 			}
 
@@ -167,11 +187,11 @@ function SavedArray(redis, keyName, readyCb) {
 	};
 
 	function loadFromRedis() {
-		redis.lrange(keyName, 0, -1, (err, arrBackup) => {
+		redis.lrange(config.keyName, 0, -1, (err, arrBackup) => {
 			if(!err && arrBackup.length > 0) {
 				rawArray.splice(0);
 				for(let i = 0; i < arrBackup.length; i++)
-					rawArray.push(RedisToJS(arrBackup[i]));
+					rawArray.push(config.decoder(arrBackup[i]));
 			}
 
 			if(readyCb)
@@ -192,7 +212,7 @@ function SavedArray(redis, keyName, readyCb) {
 			//Operations like "pop" will just decrease the length of the array, so when this happens we need to remove the values from
 			//the redis list as well
 			if(index === "length" && value < rawArray.length) {
-				RedisListDelete(redis, keyName, value, rawArray.length - value);
+				RedisListDelete(redis, config.keyName, value, rawArray.length - value);
 
 				rawArray[index] = value;
 				return true;
@@ -203,14 +223,14 @@ function SavedArray(redis, keyName, readyCb) {
 			//While you can set non-integer values of an array, they do not count as "real" values
 			if(!isNaN(parsedInt) && Number(index) === parsedInt && parsedInt >= 0) {
 				if(parsedInt < rawArray.length) {
-					redis.lset(keyName, parsedInt, JSToRedis(value));
+					redis.lset(config.keyName, parsedInt, JSToRedis(value));
 				} else {
 					//You can e.g. set index 100 of an empty array, the values before that get filled with undefined
 					//These fillings however do not cause any (proxy) calls, so we must manually replicate it for the Redis side
 					let toPush = Array(parsedInt - rawArray.length);
 					toPush.push(value);
 
-					RedisListInsert(redis, keyName, toPush);
+					RLInsert(toPush);
 
 					rawArray.push(value);
 
@@ -226,7 +246,7 @@ function SavedArray(redis, keyName, readyCb) {
 
 			//calling delete on an array will remove the value, but it wont shift down the array, so lets do the same for Redis.
 			if(!isNaN(parsedInt) && Number(index) === parsedInt && parsedInt >= 0)
-				redis.lset(keyName, parsedInt, "null");
+				redis.lset(config.keyName, parsedInt, "null");
 
 			delete rawArray[index];
 			return true;
@@ -244,17 +264,35 @@ function SavedArray(redis, keyName, readyCb) {
 }
 
 //Why cant the Array be as ez as this. I really didnt want to represent the array as a hash in Redis though.
-function SavedObject(redis, keyName, readyCb) {
+function SavedObject(redis, options, readyCb) {
 	const rawObject = {};
 
-	keyName = OBJECT_PREFIX + keyName;
+	if(typeof options === "string")
+		options = {keyName: options};
+
+	if(typeof options !== "object")
+		throw "\"options\" must be an Object or a String representing the \"keyName\" field";
+
+	const config = Object.assign({
+		prefix: OBJECT_PREFIX,
+		encoder: JSToRedis,
+		decoder: RedisToJS
+	}, options);
+
+	if(typeof config.keyName !== "string")
+		throw "\"keyName\" and \"prefix\" must be a string";
+
+	config.keyName = config.prefix + config.keyName;
+
+	if(typeof config.encoder !== "function" || typeof config.decoder !== "function")
+		throw "\"encoder\" and \"decoder\" must be functions";
 
 	const SavedObjectFuncs = {
 		overwrite(newObject = {}) {
 			let multi = redis.multi();
-			multi.del(keyName);
+			multi.del(config.keyName);
 			for(let key in newObject)
-				multi.hset(keyName, key, JSToRedis(newObject[key]));
+				multi.hset(config.keyName, key, JSToRedis(newObject[key]));
 			multi.exec();
 
 			for(let k in rawObject)
@@ -267,13 +305,13 @@ function SavedObject(redis, keyName, readyCb) {
 
 	function loadFromRedis() {
 		//Get up to 4294967295 rows from array (Max keys in JS obj). Splitting it into batches *might* be better, but for now I don"t care.
-		redis.hscan(keyName, 0, "COUNT", 4294967295, (err, objBackup) => {
+		redis.hscan(config.keyName, 0, "COUNT", 4294967295, (err, objBackup) => {
 			if(!err && objBackup) {
 				for(let k in rawObject)
 					delete rawObject[k];
 
 				for(let i = 0; i < objBackup[1].length; i += 2)
-					rawObject[objBackup[1][i]] = RedisToJS(objBackup[1][i+1]);
+					rawObject[objBackup[1][i]] = config.decoder(objBackup[1][i+1]);
 			}
 
 			if(readyCb)
@@ -289,13 +327,13 @@ function SavedObject(redis, keyName, readyCb) {
 			if(key === "overwrite")
 				throw "Setting reserved property \"overwrite\" is not possible with Saved";
 
-			redis.hset(keyName, key, JSToRedis(value));
+			redis.hset(config.keyName, key, config.encoder(value));
 
 			rawObject[key] = value;
 			return true;
 		},
 		deleteProperty (target, key) {
-			redis.hdel(keyName, key);
+			redis.hdel(config.keyName, key);
 
 			delete rawObject[key];
 			return true;
