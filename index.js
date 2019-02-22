@@ -140,7 +140,7 @@ function SavedArray(redis, options, readyCb) {
 			//Since we don"t just insert, but also remove values we might aswell overwrite as much as possible values
 			//that would be removed anyways to save some ops
 			for(let i = 0; i < toOverwrite; i++) {
-				multi.lset(config.keyName, index + i, JSToRedis(arguments[2 + i]));
+				multi.lset(config.keyName, index + i, config.encoder(arguments[2 + i]));
 
 				rawArray[index + i] = arguments[2 + i];
 			}
@@ -150,9 +150,9 @@ function SavedArray(redis, options, readyCb) {
 				multi.lset(config.keyName, index + toOverwrite - 1, REDIS_TMP_PIVOT_KEY);
 
 				for(let i = toOverwrite; i < toInsert; i++)
-					multi.linsert(config.keyName, "AFTER", REDIS_TMP_PIVOT_KEY, JSToRedis(arguments[2 + i]));
+					multi.linsert(config.keyName, "AFTER", REDIS_TMP_PIVOT_KEY, config.encoder(arguments[2 + i]));
 
-				multi.lset(config.keyName, index + toOverwrite - 1, JSToRedis(rawArray[index + toOverwrite - 1]));
+				multi.lset(config.keyName, index + toOverwrite - 1, config.encoder(rawArray[index + toOverwrite - 1]));
 			}
 
 			//If we delete more than we try to insert, we gotta finally remove the more of them from Redis
@@ -173,7 +173,7 @@ function SavedArray(redis, options, readyCb) {
 			else {
 				let multi = redis.multi();
 				multi.del(config.keyName);
-				multi.lpush(config.keyName, ...newValues.map(JSToRedis));
+				multi.lpush(config.keyName, ...newValues.map(config.encoder));
 				multi.exec();
 			}
 
@@ -223,7 +223,7 @@ function SavedArray(redis, options, readyCb) {
 			//While you can set non-integer values of an array, they do not count as "real" values
 			if(!isNaN(parsedInt) && Number(index) === parsedInt && parsedInt >= 0) {
 				if(parsedInt < rawArray.length) {
-					redis.lset(config.keyName, parsedInt, JSToRedis(value));
+					redis.lset(config.keyName, parsedInt, config.encoder(value));
 				} else {
 					//You can e.g. set index 100 of an empty array, the values before that get filled with undefined
 					//These fillings however do not cause any (proxy) calls, so we must manually replicate it for the Redis side
@@ -292,7 +292,7 @@ function SavedObject(redis, options, readyCb) {
 			let multi = redis.multi();
 			multi.del(config.keyName);
 			for(let key in newObject)
-				multi.hset(config.keyName, key, JSToRedis(newObject[key]));
+				multi.hset(config.keyName, key, config.encoder(newObject[key]));
 			multi.exec();
 
 			for(let k in rawObject)
